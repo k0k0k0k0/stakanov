@@ -4,12 +4,11 @@ import time
 import os
 from tkinter import *
 from tkinter import ttk, filedialog, messagebox
-from matplotlib import pyplot as plt
 from tksheet import Sheet
 import threading
 
 import stakanov
-#import waffle_graph
+import waffle_graph
 
 class StakanovGUI:
     def __init__(self, root):
@@ -43,7 +42,6 @@ class StakanovGUI:
         self.right_info_bar = ttk.Label(main_frame, text="", anchor="w")
         self.status_bar.grid(row=4, sticky="ew", pady=(0, 5))
         self.right_info_bar.grid(row=4, column=1, sticky="ew", pady=(0, 5))
-
 
         menu_bar = Menu(main_frame)
 
@@ -153,7 +151,9 @@ class StakanovGUI:
         # Элементы для вкладки "Визуализации"
         visualization_label = ttk.Label(self.tab_visualizations, text="Здесь будут визуализации")
         visualization_label.grid(row=0, column=0, padx=20, pady=20)
-        self.disk_waffle = ttk.Label(self.tab_visualizations).grid(row=1, columnspan=5, rowspan=2, sticky='nswe')
+        self.disk_waffle = ttk.Label(self.tab_visualizations)
+        self.disk_waffle.grid(row=1, columnspan=5, rowspan=2, sticky='nswe')
+        self.disk_waffle['image'] = PhotoImage(file='waffle.png')
         
         # привязки по клавиатуре и фокусу
         directory_entry.focus()
@@ -163,19 +163,24 @@ class StakanovGUI:
         # Привязываем событие <Expose> ко всем дочерним элементам Notebook
         #for child in notebook.winfo_children():
         #    child.bind('<Expose>', self.on_expose)
+        self.tab_visualizations.bind('<FocusIn>', self.on_expose)
 
-    def display_waffle(self, data: dict): # не используется
+    def display_waffle(self, data: Counter):
         #self.tab_visualizations, dict(self.files_by_size)
+        # надо подготовить данные для визуализации
+        # взять Х самых больших, перевести в мегабайты
+        data = {file:round(size/1024, 2) for file, size in dict(data.most_common(20)).items()}
+        print(data)
         waffle_graph.build_waffle(data) # сохранили waffle.png
 
         imgobj = PhotoImage(file='waffle.png')
         self.disk_waffle['image'] = imgobj
         root.update_idletasks()
     
-    def on_expose(self, event): # не используется
-        # Проверяем, что это событие относится к нашей вкладке Visualizations
+    def on_expose(self, event):  
+        # если открыта вкладка Visualizations
         if event.widget is self.tab_visualizations:
-            self.display_waffle(dict(self.files_by_size))
+            self.display_waffle(self.files_by_size)
 
     def show_status_message(self, message):
         self.status_bar.config(text=message)
@@ -224,6 +229,7 @@ class StakanovGUI:
         self.show_status_message(f"Папка {directory_path} индексируется...")
         thread.start()
 
+
     def scan_directory_thread(self, directory_path):
         global tic
         try:
@@ -235,14 +241,16 @@ class StakanovGUI:
             self.all_items_in_folder.clear()
 
             if self.use_custom_csv_path.get() and not self.custom_csv_path:
-                folder_selected = filedialog.askdirectory()
-                if folder_selected:
-                    path_to_csv = folder_selected + '/file_listing.csv'
+                filename_selected = filedialog.asksaveasfilename()
+                if filename_selected:
+                    path_to_csv = filename_selected # + '/file_listing.csv'
                 else: # не выбрали ничего
                     path_to_csv = 'file_listing.csv'
             else: # путь по умолчанию
                 path_to_csv = 'file_listing.csv'
 
+            # время нужно засечь еще раз, иначе выбор файла тоже будет учитываться в elapsed
+            tic = time.perf_counter()
 
             with open(path_to_csv, 'w', encoding='utf8', newline='') as f:
                 writer = csv.DictWriter(f, field_names, extrasaction='raise')
@@ -284,6 +292,7 @@ class StakanovGUI:
             toc = time.perf_counter()
             self.show_status_message(f"Папка {directory_path} успешно проиндексирована за {toc - tic:0.4f} с.")
             self.show_info_message(f"Последняя индексация: {time.ctime()}")
+
    
     def filter_file_tree(self, event=None):
         query = self.search_query.get().strip().lower()
